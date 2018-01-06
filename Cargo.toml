@@ -17,10 +17,15 @@ license = "Apache-2.0"
 
 [dependencies]
 error-chain = "*"
+futures = "*"
 libc = "*"
 maplit = "*"
+macro-attr = "*"
+enum_derive = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
+tokio-core = "*"
+tokio-timer = "*"
 treexml = { git = "https://github.com/rahulg/treexml-rs" }
 treexml_util = { git = "https://github.com/vorot93/treexml-util" }
