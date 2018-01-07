@@ -1,12 +1,14 @@
 #![cfg_attr(feature = "cargo-clippy", allow(mutex_atomic))]
 
-#[macro_use] extern crate macro_attr;
-#[macro_use] extern crate enum_derive;
+#[macro_use]
+extern crate enum_derive;
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
 extern crate futures;
 extern crate libc;
+#[macro_use]
+extern crate macro_attr;
 #[macro_use]
 extern crate maplit;
 extern crate serde;
@@ -125,7 +127,9 @@ impl Default for MSG_CHANNEL {
 }
 
 macro_attr! {
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, IterVariants!(MsgChannelVariants))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, IterVariants!(
+    MsgChannelVariants
+))]
 pub enum MsgChannel {
     #[serde(rename = "process_control_request")] ProcessControlRequest,
     #[serde(rename = "process_control_reply")] ProcessControlReply,
