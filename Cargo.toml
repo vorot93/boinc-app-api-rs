@@ -16,6 +16,7 @@ categories = [
 license = "Apache-2.0"
 
 [dependencies]
+enum-iter = { git = "https://github.com/vorot93/enum-iter" }
 error-chain = "*"
 futures = "*"
 libc = "*"
