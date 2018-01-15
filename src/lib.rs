@@ -79,23 +79,22 @@ mod tests {
         let client_connection = ControlConnection::new(Arc::clone(&app_channel));
         let app_connection = AppConnection::new(Arc::clone(&app_channel));
 
-        let mut core = tokio_core::reactor::Core::new().unwrap();
-
-        core.run(client_connection.send(StatusMessage::AppStatus(fixture.clone())))
+        client_connection
+            .send(StatusMessage::AppStatus(fixture.clone()))
+            .wait()
             .unwrap();
 
         let timer = Timer::default();
         let timeout = timer.sleep(Duration::from_millis(1500)).then(|_| Err(()));
-        let output = core.run(
-            timeout
-                .select(
-                    app_connection
-                        .into_future()
-                        .map(|(v, _)| v.unwrap())
-                        .map_err(|(_, _)| ()),
-                )
-                .map(|(v, _)| v),
-        );
+        let output = timeout
+            .select(
+                app_connection
+                    .into_future()
+                    .map(|(v, _)| v.unwrap())
+                    .map_err(|(_, _)| ()),
+            )
+            .map(|(v, _)| v)
+            .wait();
         match output {
             Ok(result) => assert_eq!(expectation, result),
             Err(_) => panic!("Failed to get result within time limit"),
