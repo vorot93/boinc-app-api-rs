@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate enum_iter;
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
 #[macro_use]
 extern crate futures;
 #[macro_use]

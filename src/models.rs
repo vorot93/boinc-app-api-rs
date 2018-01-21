@@ -1,3 +1,4 @@
+extern crate failure;
 extern crate std;
 extern crate treexml;
 extern crate treexml_util;
@@ -120,23 +121,19 @@ impl TryFrom<(ControlMsgChannel, Vec<u8>)> for ControlMessage {
         match c {
             ControlMsgChannel::ProcessControlRequest => root.children
                 .get(0)
-                .ok_or_else(|| {
-                    errors::Error::from(errors::ErrorKind::InvalidVariantInIPCChannel(
-                        "process_control_request".into(),
-                        "(none)".into(),
-                    ))
+                .ok_or_else(|| errors::Error::InvalidVariantInIPCChannel {
+                    channel: "process_control_request".into(),
+                    variant: "(none)".into(),
                 })
                 .and_then(|n| match &*n.name {
                     "quit" => Ok(ProcessControlRequest::Quit),
                     "suspend" => Ok(ProcessControlRequest::Suspend),
                     "resume" => Ok(ProcessControlRequest::Resume),
                     "abort" => Ok(ProcessControlRequest::Abort),
-                    _ => Err(errors::Error::from(
-                        errors::ErrorKind::InvalidVariantInIPCChannel(
-                            "process_control_request".into(),
-                            n.name.clone(),
-                        ),
-                    )),
+                    _ => Err(errors::Error::InvalidVariantInIPCChannel {
+                        channel: "process_control_request".into(),
+                        variant: n.name.clone(),
+                    }),
                 })
                 .map(ControlMessage::ProcessControlRequest),
             ControlMsgChannel::GraphicsRequest => Ok(ControlMessage::GraphicsRequest),
@@ -217,10 +214,10 @@ impl TryFrom<(StatusMsgChannel, Vec<u8>)> for StatusMessage {
             })),
             StatusMsgChannel::AppStatus => Ok(StatusMessage::AppStatus(AppStatus {
                 current_cpu_time: match root.find_value("current_cpu_time")?.ok_or_else(|| {
-                    errors::ErrorKind::MissingDataInIPCMessage(
-                        "app_status".into(),
-                        "current_cpu_time".into(),
-                    ).into()
+                    errors::Error::MissingDataInIPCMessage {
+                        channel: "app_status".into(),
+                        data: "current_cpu_time".into(),
+                    }.into()
                 }) {
                     Ok(v) => v,
                     Err(v) => {
@@ -229,10 +226,10 @@ impl TryFrom<(StatusMsgChannel, Vec<u8>)> for StatusMessage {
                 },
                 checkpoint_cpu_time: match root.find_value("checkpoint_cpu_time")?.ok_or_else(
                     || {
-                        errors::ErrorKind::MissingDataInIPCMessage(
-                            "app_status".into(),
-                            "checkpoint_cpu_time".into(),
-                        ).into()
+                        errors::Error::MissingDataInIPCMessage {
+                            channel: "app_status".into(),
+                            data: "checkpoint_cpu_time".into(),
+                        }.into()
                     },
                 ) {
                     Ok(v) => v,
@@ -242,10 +239,10 @@ impl TryFrom<(StatusMsgChannel, Vec<u8>)> for StatusMessage {
                 },
                 want_network: root.find_child(|n| n.name == "want_network").is_some(),
                 fraction_done: match root.find_value("fraction_done")?.ok_or_else(|| {
-                    errors::ErrorKind::MissingDataInIPCMessage(
-                        "app_status".into(),
-                        "fraction_done".into(),
-                    ).into()
+                    errors::Error::MissingDataInIPCMessage {
+                        channel: "app_status".into(),
+                        data: "fraction_done".into(),
+                    }.into()
                 }) {
                     Ok(v) => v,
                     Err(v) => {
@@ -253,24 +250,8 @@ impl TryFrom<(StatusMsgChannel, Vec<u8>)> for StatusMessage {
                     }
                 },
                 other_pid: treexml_util::find_value("other_pid", &root)?,
-                bytes_sent: match root.find_value("bytes_sent") {
-                    Ok(v) => v,
-                    Err(e) => match *e.kind() {
-                        treexml::ErrorKind::ElementNotFound(_) => None,
-                        _ => {
-                            return Err(e.into());
-                        }
-                    },
-                },
-                bytes_received: match root.find_value("bytes_received") {
-                    Ok(v) => v,
-                    Err(e) => match *e.kind() {
-                        treexml::ErrorKind::ElementNotFound(_) => None,
-                        _ => {
-                            return Err(e.into());
-                        }
-                    },
-                },
+                bytes_sent: treexml_util::find_value("bytes_sent", &root)?,
+                bytes_received: treexml_util::find_value("bytes_received", &root)?,
             })),
             StatusMsgChannel::TrickleUp => Ok(StatusMessage::TrickleUp(TrickleUp {
                 have_new_upload_file: root.find_child(|n| n.name == "have_new_upload_file")

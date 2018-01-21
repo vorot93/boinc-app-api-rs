@@ -1,22 +1,29 @@
 extern crate treexml;
 
-error_chain!{
-    links {
-        XMLError(treexml::Error, treexml::ErrorKind);
-    }
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "missing data {} in message from IPC channel {}", data, channel)]
+    MissingDataInIPCMessage {
+        channel: String,
+        data: String,
+    },
+    #[fail(display = "data parse error: {}", what)] DataParseError {
+        what: String,
+    },
+    #[fail(display = "logic error: {}", what)] LogicError {
+        what: String,
+    },
+    #[fail(display = "invalid variant {} in IPC channel {}", variant, channel)]
+    InvalidVariantInIPCChannel {
+        variant: String,
+        channel: String,
+    },
+}
 
-    errors {
-        MissingDataInIPCMessage(channel: String, data: String) {
-            description("missing data in IPC message")
-            display("missing data {} in IPC channel {}", data, channel)
-        }
-        LogicError(desc: String) {
-            description("logic error")
-            display("logic error: {}", desc)
-        }
-        InvalidVariantInIPCChannel(channel: String, variant: String) {
-            description("invalid variant in IPC channel")
-            display("invalid variant {} in IPC channel {}", variant, channel)
+impl From<treexml::Error> for Error {
+    fn from(v: treexml::Error) -> Self {
+        Error::DataParseError {
+            what: v.to_string(),
         }
     }
 }
