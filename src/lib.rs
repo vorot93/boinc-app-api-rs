@@ -17,6 +17,8 @@ pub mod app_connection;
 pub mod client_connection;
 pub mod connection_util;
 
+pub use errors::Error;
+
 #[cfg(test)]
 mod tests {
     extern crate tokio_core;
