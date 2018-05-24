@@ -1,26 +1,30 @@
-extern crate failure;
-extern crate std;
-extern crate treexml;
-extern crate treexml_util;
-
 use errors;
 
-use self::std::convert::TryFrom;
+use treexml;
+use treexml_util;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIterator)]
 pub enum ControlMsgChannel {
-    #[serde(rename = "process_control_request")] ProcessControlRequest,
-    #[serde(rename = "graphics_request")] GraphicsRequest,
-    #[serde(rename = "heartbeat")] Heartbeat,
-    #[serde(rename = "trickle_down")] TrickleDown,
+    #[serde(rename = "process_control_request")]
+    ProcessControlRequest,
+    #[serde(rename = "graphics_request")]
+    GraphicsRequest,
+    #[serde(rename = "heartbeat")]
+    Heartbeat,
+    #[serde(rename = "trickle_down")]
+    TrickleDown,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIterator)]
 pub enum StatusMsgChannel {
-    #[serde(rename = "process_control_reply")] ProcessControlReply,
-    #[serde(rename = "graphics_reply")] GraphicsReply,
-    #[serde(rename = "app_status")] AppStatus,
-    #[serde(rename = "trickle_up")] TrickleUp,
+    #[serde(rename = "process_control_reply")]
+    ProcessControlReply,
+    #[serde(rename = "graphics_reply")]
+    GraphicsReply,
+    #[serde(rename = "app_status")]
+    AppStatus,
+    #[serde(rename = "trickle_up")]
+    TrickleUp,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -103,17 +107,18 @@ pub struct TrickleUp {
 #[serde(tag = "channel", content = "data")]
 /// Message from control to app
 pub enum ControlMessage {
-    #[serde(rename = "process_control_request")] ProcessControlRequest(ProcessControlRequest),
-    #[serde(rename = "graphics_request")] GraphicsRequest,
-    #[serde(rename = "heartbeat")] Heartbeat(Heartbeat),
-    #[serde(rename = "trickle_down")] TrickleDown(TrickleDown),
+    #[serde(rename = "process_control_request")]
+    ProcessControlRequest(ProcessControlRequest),
+    #[serde(rename = "graphics_request")]
+    GraphicsRequest,
+    #[serde(rename = "heartbeat")]
+    Heartbeat(Heartbeat),
+    #[serde(rename = "trickle_down")]
+    TrickleDown(TrickleDown),
 }
 
-impl TryFrom<(ControlMsgChannel, Vec<u8>)> for ControlMessage {
-    type Error = errors::Error;
-    fn try_from(m: (ControlMsgChannel, Vec<u8>)) -> Result<Self, Self::Error> {
-        let c = m.0;
-        let v = m.1;
+impl ControlMessage {
+    pub fn from_raw(c: ControlMsgChannel, v: Vec<u8>) -> Result<Self, errors::Error> {
         let doc = treexml::Document::parse(
             format!("<IPC>{}</IPC>", &String::from_utf8_lossy(&v)).as_bytes(),
         )?;
@@ -191,17 +196,18 @@ impl From<ControlMessage> for (ControlMsgChannel, Vec<u8>) {
 #[serde(tag = "channel", content = "payload")]
 /// Message from app to control
 pub enum StatusMessage {
-    #[serde(rename = "process_control_reply")] ProcessControlReply,
-    #[serde(rename = "graphics_reply")] GraphicsReply(GraphicsReply),
-    #[serde(rename = "app_status")] AppStatus(AppStatus),
-    #[serde(rename = "trickle_up")] TrickleUp(TrickleUp),
+    #[serde(rename = "process_control_reply")]
+    ProcessControlReply,
+    #[serde(rename = "graphics_reply")]
+    GraphicsReply(GraphicsReply),
+    #[serde(rename = "app_status")]
+    AppStatus(AppStatus),
+    #[serde(rename = "trickle_up")]
+    TrickleUp(TrickleUp),
 }
 
-impl TryFrom<(StatusMsgChannel, Vec<u8>)> for StatusMessage {
-    type Error = errors::Error;
-    fn try_from(m: (StatusMsgChannel, Vec<u8>)) -> Result<Self, Self::Error> {
-        let c = m.0;
-        let v = m.1;
+impl StatusMessage {
+    pub fn from_raw(c: StatusMsgChannel, v: Vec<u8>) -> Result<Self, errors::Error> {
         let doc = treexml::Document::parse(
             format!("<IPC>{}</IPC>", &String::from_utf8_lossy(&v)).as_bytes(),
         )?;

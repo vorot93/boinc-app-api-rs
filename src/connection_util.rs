@@ -1,13 +1,9 @@
-extern crate futures;
-extern crate std;
-
-use self::std::collections::HashMap;
-use std::hash::Hash;
-use self::std::io;
-use self::futures::{Async, AsyncSink, Poll};
-
-use shmem::*;
 use models::*;
+use shmem::*;
+
+use futures::prelude::*;
+use std;
+use std::{io, collections::HashMap, hash::Hash};
 
 pub fn flush_connection<T>(
     outgoing_slots: &mut HashMap<T, Vec<u8>>,

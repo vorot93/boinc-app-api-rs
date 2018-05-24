@@ -1,5 +1,7 @@
-#![cfg_attr(feature = "cargo-clippy", allow(mutex_atomic))]
-#![feature(try_from)]
+//! BOINC application API. Required for communication between crunching applications and the BOINC client.
+//!
+//! This crate provides common utilities for building BOINC clients and applications:
+//!
 
 #[macro_use]
 extern crate enum_iter;
@@ -7,31 +9,32 @@ extern crate enum_iter;
 extern crate failure;
 #[macro_use]
 extern crate futures;
+extern crate futures_timer;
+extern crate libc;
 #[macro_use]
 extern crate serde_derive;
+extern crate treexml;
+extern crate treexml_util;
 
-pub mod errors;
-pub mod models;
-pub mod shmem;
 pub mod app_connection;
 pub mod client_connection;
 pub mod connection_util;
+pub mod errors;
+pub mod models;
+pub mod shmem;
 
 pub use errors::Error;
 
 #[cfg(test)]
 mod tests {
-    extern crate tokio_core;
-    extern crate tokio_timer;
-    use client_connection::*;
     use app_connection::*;
+    use client_connection::*;
+    use futures::prelude::*;
+    use futures_timer::FutureExt;
     use models::*;
     use shmem::*;
-    use self::tokio_timer::*;
-    use futures::{Future, Sink, Stream};
-    use std::convert::TryFrom;
-    use std::time::Duration;
     use std::sync::Arc;
+    use std::time::Duration;
 
     #[test]
     fn test_from_ipc() {
@@ -46,7 +49,7 @@ mod tests {
             bytes_sent: None,
         });
 
-        let result = StatusMessage::try_from((
+        let result = StatusMessage::from_raw(
             StatusMsgChannel::AppStatus,
             "
             <current_cpu_time>9999.0</current_cpu_time>\n
@@ -56,7 +59,7 @@ mod tests {
             <other_pid>345</other_pid>
         "
                 .into(),
-        )).unwrap();
+        ).unwrap();
 
         assert_eq!(expectation, result);
     }
@@ -78,24 +81,21 @@ mod tests {
         let c = MemoryAppChannel::default();
         let app_channel: SharedAppChannel = Arc::new(c);
 
-        let client_connection = ControlConnection::new(Arc::clone(&app_channel));
-        let app_connection = AppConnection::new(Arc::clone(&app_channel));
+        let client_connection = AppHandle::new(Arc::clone(&app_channel));
+        let app_connection = ClientHandle::new(Arc::clone(&app_channel));
 
         client_connection
             .send(StatusMessage::AppStatus(fixture.clone()))
             .wait()
             .unwrap();
 
-        let timer = Timer::default();
-        let timeout = timer.sleep(Duration::from_millis(1500)).then(|_| Err(()));
-        let output = timeout
-            .select(
-                app_connection
-                    .into_future()
-                    .map(|(v, _)| v.unwrap())
-                    .map_err(|(_, _)| ()),
-            )
-            .map(|(v, _)| v)
+        let timeout = Duration::from_millis(1500);
+        let output = app_connection
+            .into_future()
+            .map(|(v, _)| v.unwrap())
+            .map_err(|(v, _)| v)
+            .timeout(timeout)
+            .map_err(|_| ())
             .wait();
         match output {
             Ok(result) => assert_eq!(expectation, result),

@@ -1,40 +1,33 @@
-extern crate futures;
-extern crate std;
-
 use connection_util::*;
 use models::*;
 use shmem::*;
 
-use self::std::collections::HashMap;
-use self::std::collections::hash_map::Entry;
-use self::std::convert::TryFrom;
-use self::std::io;
-use self::std::sync::Arc;
-use self::futures::*;
+use futures::*;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::io;
+use std::sync::Arc;
 
 // Represents a connection with the running application.
-pub struct AppConnection {
+pub struct ClientHandle {
     app_channel: SharedAppChannel,
     send_closed: bool,
     outgoing_slots: HashMap<ControlMsgChannel, Vec<u8>>,
 }
 
-impl Stream for AppConnection {
+impl Stream for ClientHandle {
     type Item = StatusMessage;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        match self.app_channel
-            .pull_status()
-            .and_then(|m| StatusMessage::try_from(m).ok())
-        {
+        match self.app_channel.pull_status() {
             Some(v) => Ok(Async::Ready(Some(v))),
             None => Ok(Async::NotReady),
         }
     }
 }
 
-impl Sink for AppConnection {
+impl Sink for ClientHandle {
     type SinkItem = ControlMessage;
     type SinkError = io::Error;
 
@@ -64,7 +57,7 @@ impl Sink for AppConnection {
     }
 }
 
-impl AppConnection {
+impl ClientHandle {
     pub fn new(app_channel: SharedAppChannel) -> Self {
         Self {
             send_closed: false,

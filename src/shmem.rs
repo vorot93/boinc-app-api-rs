@@ -1,20 +1,18 @@
-extern crate futures;
-extern crate libc;
-extern crate std;
-
 use models::*;
 
-use self::std::cmp::min;
-use self::std::ffi::CStr;
-use self::std::io;
-use self::std::io::Write;
-use self::std::os::linux::fs::MetadataExt;
-use self::std::os::unix::fs::OpenOptionsExt;
-use self::std::os::unix::io::AsRawFd;
-use self::std::sync::{Arc, Mutex};
-use self::std::sync::mpsc::channel;
-use self::futures::AsyncSink;
-use self::libc::c_char;
+use futures::prelude::*;
+use libc;
+use libc::c_char;
+use std;
+use std::cmp::min;
+use std::ffi::CStr;
+use std::io;
+use std::io::Write;
+use std::os::linux::fs::MetadataExt;
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::io::AsRawFd;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
 
 const MSG_CHANNEL_SIZE: usize = 1024;
 
@@ -88,17 +86,18 @@ impl Default for MSG_CHANNEL {
     }
 }
 
+/// ! On disk representation of the memory shared between client and application.
 #[repr(C)]
 #[derive(Default)]
 pub struct SHARED_MEM {
-    process_control_request: MSG_CHANNEL,
-    process_control_reply: MSG_CHANNEL,
-    graphics_request: MSG_CHANNEL,
-    graphics_reply: MSG_CHANNEL,
-    heartbeat: MSG_CHANNEL,
-    app_status: MSG_CHANNEL,
-    trickle_up: MSG_CHANNEL,
-    trickle_down: MSG_CHANNEL,
+    pub process_control_request: MSG_CHANNEL,
+    pub process_control_reply: MSG_CHANNEL,
+    pub graphics_request: MSG_CHANNEL,
+    pub graphics_reply: MSG_CHANNEL,
+    pub heartbeat: MSG_CHANNEL,
+    pub app_status: MSG_CHANNEL,
+    pub trickle_up: MSG_CHANNEL,
+    pub trickle_down: MSG_CHANNEL,
 }
 
 impl SHARED_MEM {
@@ -128,6 +127,7 @@ impl SHARED_MEM {
     }
 }
 
+/// Represents a channel that can be used to send control commands and status messages back and forth between client and application.
 pub trait AppChannel {
     /// Internal accessor for shared memory.
     fn transaction(&self, f: Box<Fn(&mut SHARED_MEM)>);
@@ -159,13 +159,14 @@ pub trait AppChannel {
         rx.recv().unwrap()
     }
 
-    // Receive a new status message from any of the channels, if available
-    fn pull_control(&self) -> Option<(ControlMsgChannel, Vec<u8>)> {
+    /// Receive a new status message from any of the channels, if available
+    fn pull_control(&self) -> Option<ControlMessage> {
         let (tx, rx) = channel();
         self.transaction(Box::new(move |data| {
             for id in ControlMsgChannel::enum_iter() {
                 if let Some(v) = data.get_channel_mut(id.into()).pop() {
-                    tx.send(Some((id, v))).unwrap();
+                    tx.send(Some(ControlMessage::from_raw(id, v).unwrap()))
+                        .unwrap();
                     break;
                 }
             }
@@ -174,13 +175,14 @@ pub trait AppChannel {
         rx.recv().unwrap()
     }
 
-    // Receive a new status message from any of the channels, if available
-    fn pull_status(&self) -> Option<(StatusMsgChannel, Vec<u8>)> {
+    /// Receive a new status message from any of the channels, if available
+    fn pull_status(&self) -> Option<StatusMessage> {
         let (tx, rx) = channel();
         self.transaction(Box::new(move |data| {
             for id in StatusMsgChannel::enum_iter() {
                 if let Some(v) = data.get_channel_mut(id.into()).pop() {
-                    tx.send(Some((id, v))).unwrap();
+                    tx.send(Some(StatusMessage::from_raw(id, v).unwrap()))
+                        .unwrap();
                     break;
                 }
             }

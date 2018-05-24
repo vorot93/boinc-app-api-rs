@@ -18,7 +18,8 @@ license = "Apache-2.0"
 [dependencies]
 enum-iter = { git = "https://github.com/vorot93/enum-iter" }
 failure = "*"
-futures = "*"
+futures = "0.1"
+futures-timer = "*"
 libc = "*"
 maplit = "*"
 macro-attr = "*"
@@ -27,6 +28,5 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 tokio-core = "*"
-tokio-timer = "*"
 treexml = { git = "https://github.com/vorot93/treexml-rs" }
 treexml_util = { git = "https://github.com/vorot93/treexml-util" }

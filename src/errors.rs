@@ -1,23 +1,15 @@
-extern crate treexml;
+use treexml;
 
 #[derive(Debug, Fail)]
 pub enum Error {
     #[fail(display = "missing data {} in message from IPC channel {}", data, channel)]
-    MissingDataInIPCMessage {
-        channel: String,
-        data: String,
-    },
-    #[fail(display = "data parse error: {}", what)] DataParseError {
-        what: String,
-    },
-    #[fail(display = "logic error: {}", what)] LogicError {
-        what: String,
-    },
+    MissingDataInIPCMessage { channel: String, data: String },
+    #[fail(display = "data parse error: {}", what)]
+    DataParseError { what: String },
+    #[fail(display = "logic error: {}", what)]
+    LogicError { what: String },
     #[fail(display = "invalid variant {} in IPC channel {}", variant, channel)]
-    InvalidVariantInIPCChannel {
-        variant: String,
-        channel: String,
-    },
+    InvalidVariantInIPCChannel { variant: String, channel: String },
 }
 
 impl From<treexml::Error> for Error {

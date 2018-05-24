@@ -1,40 +1,33 @@
-extern crate futures;
-extern crate std;
-
 use connection_util::*;
 use models::*;
 use shmem::*;
 
-use self::std::collections::HashMap;
-use self::std::collections::hash_map::Entry;
-use self::std::convert::TryFrom;
-use self::std::io;
-use self::std::sync::Arc;
-use self::futures::*;
+use futures::prelude::*;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::io;
+use std::sync::Arc;
 
 // Represents a connection with the control daemon.
-pub struct ControlConnection {
+pub struct AppHandle {
     app_channel: SharedAppChannel,
     send_closed: bool,
     outgoing_slots: HashMap<StatusMsgChannel, Vec<u8>>,
 }
 
-impl Stream for ControlConnection {
+impl Stream for AppHandle {
     type Item = ControlMessage;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        match self.app_channel
-            .pull_control()
-            .and_then(|m| ControlMessage::try_from(m).ok())
-        {
+        match self.app_channel.pull_control() {
             Some(v) => Ok(Async::Ready(Some(v))),
             None => Ok(Async::NotReady),
         }
     }
 }
 
-impl Sink for ControlConnection {
+impl Sink for AppHandle {
     type SinkItem = StatusMessage;
     type SinkError = io::Error;
 
@@ -54,17 +47,17 @@ impl Sink for ControlConnection {
             panic!("Sink has been closed.");
         }
 
-        self.flush()
+        self.flush_data()
     }
 
     fn close(&mut self) -> Poll<(), Self::SinkError> {
         self.send_closed = true;
-        try_ready!(self.flush());
+        try_ready!(self.flush_data());
         Ok(Async::Ready(()))
     }
 }
 
-impl ControlConnection {
+impl AppHandle {
     pub fn new(app_channel: SharedAppChannel) -> Self {
         Self {
             send_closed: false,
@@ -73,7 +66,7 @@ impl ControlConnection {
         }
     }
 
-    fn flush(&mut self) -> Poll<(), io::Error> {
+    fn flush_data(&mut self) -> Poll<(), io::Error> {
         flush_connection(&mut self.outgoing_slots, &self.app_channel)
     }
 }
