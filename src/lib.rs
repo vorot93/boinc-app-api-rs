@@ -11,6 +11,7 @@ extern crate failure;
 extern crate futures;
 extern crate futures_timer;
 extern crate libc;
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate treexml;
@@ -38,7 +39,7 @@ mod tests {
 
     #[test]
     fn test_from_ipc() {
-        let expectation = StatusMessage::AppStatus(AppStatus {
+        let expectation = StatusMessage::AppStatus(AppStatusData {
             current_cpu_time: 9999.0,
             checkpoint_cpu_time: 8888.0,
             want_network: true,
@@ -67,7 +68,7 @@ mod tests {
     #[test]
     /// In this test we create two IPCStreams which communicate via a shared AppChannel.
     fn test_inmemory_stream() {
-        let fixture = AppStatus {
+        let fixture = AppStatusData {
             current_cpu_time: 4.0,
             checkpoint_cpu_time: 5.0,
             want_network: true,

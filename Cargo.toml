@@ -28,5 +28,5 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 tokio-core = "*"
-treexml = { git = "https://github.com/vorot93/treexml-rs" }
+treexml = { git = "https://github.com/vorot93/treexml-rs", branch = "failure" }
 treexml_util = { git = "https://github.com/vorot93/treexml-util" }

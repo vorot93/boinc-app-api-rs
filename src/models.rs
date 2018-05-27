@@ -1,7 +1,19 @@
-use errors;
+use errors::Error;
 
-use treexml;
-use treexml_util;
+use treexml::Element;
+use treexml_util::{parse_node, ElementExt};
+
+fn parse_xml_data(s: &[u8]) -> Result<Element, Error> {
+    Ok(parse_node(&format!("<root>{}</root>", &String::from_utf8_lossy(s)))?.unwrap())
+}
+
+pub(crate) trait MsgChannelXml
+where
+    Self: Sized,
+{
+    fn from_xml(s: &[u8]) -> Result<Self, Error>;
+    fn to_xml(&self) -> Vec<u8>;
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIterator)]
 pub enum ControlMsgChannel {
@@ -69,10 +81,69 @@ pub enum ProcessControlRequest {
     Abort,
 }
 
+impl MsgChannelXml for ProcessControlRequest {
+    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+        use self::ProcessControlRequest::*;
+
+        let mut root = parse_xml_data(s)?;
+
+        let variant = root.children
+            .pop()
+            .ok_or_else(|| Error::DataParseError(format_err!("No variant detected")))?
+            .name;
+
+        Ok(match variant.as_ref() {
+            "quit" => Quit,
+            "suspend" => Suspend,
+            "resume" => Resume,
+            "abort" => Abort,
+            _ => {
+                return Err(Error::DataParseError(format_err!(
+                    "Invalid variant detected: {}",
+                    &variant
+                )));
+            }
+        })
+    }
+
+    fn to_xml(&self) -> Vec<u8> {
+        use self::ProcessControlRequest::*;
+
+        match *self {
+            Quit => "<quit/>",
+            Suspend => "<suspend/>",
+            Resume => "<resume/>",
+            Abort => "<abort/>",
+        }.into()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct GraphicsReply {
+pub struct GraphicsReplyData {
     pub web_graphics_url: Option<String>,
     pub remote_desktop_addr: Option<String>,
+}
+
+impl MsgChannelXml for GraphicsReplyData {
+    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+        let root = parse_xml_data(s)?;
+
+        Ok(Self {
+            web_graphics_url: root.find_value0("web_graphics_url")?,
+            remote_desktop_addr: root.find_value0("remote_desktop_addr")?,
+        })
+    }
+
+    fn to_xml(&self) -> Vec<u8> {
+        let mut s = String::new();
+        if let Some(v) = self.web_graphics_url.as_ref() {
+            s += &format!("<web_graphics_url>{}</web_graphics_url>\n", v);
+        }
+        if let Some(v) = self.remote_desktop_addr.as_ref() {
+            s += &format!("<remote_desktop_addr>{}</remote_desktop_addr>\n", v);
+        }
+        s.into()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -81,8 +152,30 @@ pub struct Heartbeat {
     pub max_wss: Option<f64>,
 }
 
+impl MsgChannelXml for Heartbeat {
+    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+        let root = parse_xml_data(s)?;
+
+        Ok(Self {
+            wss: root.find_value0("wss")?,
+            max_wss: root.find_value0("max_wss")?,
+        })
+    }
+
+    fn to_xml(&self) -> Vec<u8> {
+        let mut s = String::new();
+        if let Some(v) = self.wss {
+            s += &format!("<wss>{}</wss>\n", v);
+        }
+        if let Some(v) = self.max_wss {
+            s += &format!("<max_wss>{}</max_wss>\n", v);
+        }
+        s.into()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AppStatus {
+pub struct AppStatusData {
     pub current_cpu_time: f64,
     pub checkpoint_cpu_time: f64,
     pub want_network: bool,
@@ -92,15 +185,104 @@ pub struct AppStatus {
     pub bytes_received: Option<f64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TrickleDown {
-    pub have_trickle_down: bool,
-    pub upload_file_status: bool,
+impl MsgChannelXml for AppStatusData {
+    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+        let root = parse_xml_data(s)?;
+
+        Ok(Self {
+            current_cpu_time: root.find_value1("current_cpu_time")?,
+            checkpoint_cpu_time: root.find_value1("checkpoint_cpu_time")?,
+            want_network: root.find_bool("want_network")?,
+            fraction_done: root.find_value1("fraction_done")?,
+            other_pid: root.find_value0("other_pid")?,
+            bytes_sent: root.find_value0("bytes_sent")?,
+            bytes_received: root.find_value0("bytes_received")?,
+        })
+    }
+
+    fn to_xml(&self) -> Vec<u8> {
+        let mut s = String::new();
+        s += &format!(
+            "<current_cpu_time>{}</current_cpu_time>\n",
+            self.current_cpu_time
+        );
+        s += &format!(
+            "<checkpoint_cpu_time>{}</checkpoint_cpu_time>\n",
+            self.checkpoint_cpu_time
+        );
+        if self.want_network {
+            s += "<want_network>1</want_network>\n";
+        }
+        s += &format!("<fraction_done>{}</fraction_done>\n", self.fraction_done);
+        if let Some(v) = self.other_pid {
+            s += &format!("<other_pid>{}</other_pid>\n", v);
+        }
+        if let Some(v) = self.bytes_sent {
+            s += &format!("<bytes_sent>{}</bytes_sent>\n", v);
+        }
+        if let Some(v) = self.bytes_received {
+            s += &format!("<bytes_received>{}</bytes_received>\n", v);
+        }
+        s.into()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TrickleUp {
+pub struct TrickleDownData {
+    pub have_new_trickle_down: bool,
+    pub upload_file_status: bool,
+}
+
+impl MsgChannelXml for TrickleDownData {
+    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+        let root = parse_xml_data(s)?;
+
+        Ok(Self {
+            have_new_trickle_down: root.find_bool("have_new_trickle_down")?,
+            upload_file_status: root.find_bool("upload_file_status")?,
+        })
+    }
+
+    fn to_xml(&self) -> Vec<u8> {
+        let mut s = String::new();
+        if self.have_new_trickle_down {
+            s += "<have_new_trickle_down/>\n";
+        }
+        if self.upload_file_status {
+            s += "<upload_file_status/>\n";
+        }
+        s.into()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TrickleUpData {
+    pub have_new_trickle_up: bool,
     pub have_new_upload_file: bool,
+}
+
+impl MsgChannelXml for TrickleUpData {
+    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+        let root = parse_xml_data(s)?;
+
+        Ok(Self {
+            have_new_trickle_up: root.find_bool("have_new_trickle_up")?,
+            have_new_upload_file: root.find_bool("have_new_upload_file")?,
+        })
+    }
+
+    fn to_xml(&self) -> Vec<u8> {
+        let mut out = String::new();
+
+        if self.have_new_trickle_up {
+            out += "<have_new_trickle_up />\n";
+        }
+        if self.have_new_upload_file {
+            out += "<have_new_upload_file />\n";
+        }
+
+        out.into()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -114,43 +296,22 @@ pub enum ControlMessage {
     #[serde(rename = "heartbeat")]
     Heartbeat(Heartbeat),
     #[serde(rename = "trickle_down")]
-    TrickleDown(TrickleDown),
+    TrickleDown(TrickleDownData),
 }
 
 impl ControlMessage {
-    pub fn from_raw(c: ControlMsgChannel, v: Vec<u8>) -> Result<Self, errors::Error> {
-        let doc = treexml::Document::parse(
-            format!("<IPC>{}</IPC>", &String::from_utf8_lossy(&v)).as_bytes(),
-        )?;
-        let root = doc.root.unwrap();
+    pub fn from_raw(c: ControlMsgChannel, b: Vec<u8>) -> Result<Self, Error> {
         match c {
-            ControlMsgChannel::ProcessControlRequest => root.children
-                .get(0)
-                .ok_or_else(|| errors::Error::InvalidVariantInIPCChannel {
-                    channel: "process_control_request".into(),
-                    variant: "(none)".into(),
-                })
-                .and_then(|n| match &*n.name {
-                    "quit" => Ok(ProcessControlRequest::Quit),
-                    "suspend" => Ok(ProcessControlRequest::Suspend),
-                    "resume" => Ok(ProcessControlRequest::Resume),
-                    "abort" => Ok(ProcessControlRequest::Abort),
-                    _ => Err(errors::Error::InvalidVariantInIPCChannel {
-                        channel: "process_control_request".into(),
-                        variant: n.name.clone(),
-                    }),
-                })
-                .map(ControlMessage::ProcessControlRequest),
+            ControlMsgChannel::ProcessControlRequest => {
+                MsgChannelXml::from_xml(&b).map(ControlMessage::ProcessControlRequest)
+            }
             ControlMsgChannel::GraphicsRequest => Ok(ControlMessage::GraphicsRequest),
-            ControlMsgChannel::Heartbeat => Ok(ControlMessage::Heartbeat(Heartbeat {
-                wss: root.find_value("wss")?,
-                max_wss: root.find_value("max_wss")?,
-            })),
-            ControlMsgChannel::TrickleDown => Ok(ControlMessage::TrickleDown(TrickleDown {
-                have_trickle_down: root.find_child(|n| n.name == "have_trickle_down").is_some(),
-                upload_file_status: root.find_child(|n| n.name == "upload_file_status")
-                    .is_some(),
-            })),
+            ControlMsgChannel::Heartbeat => {
+                MsgChannelXml::from_xml(&b).map(ControlMessage::Heartbeat)
+            }
+            ControlMsgChannel::TrickleDown => {
+                MsgChannelXml::from_xml(&b).map(ControlMessage::TrickleDown)
+            }
         }
     }
 }
@@ -160,34 +321,15 @@ impl From<ControlMessage> for (ControlMsgChannel, Vec<u8>) {
         match m {
             ControlMessage::ProcessControlRequest(v) => (
                 ControlMsgChannel::ProcessControlRequest,
-                match v {
-                    ProcessControlRequest::Quit => "<quit/>",
-                    ProcessControlRequest::Suspend => "<suspend/>",
-                    ProcessControlRequest::Resume => "<resume/>",
-                    ProcessControlRequest::Abort => "<abort/>",
-                }.into(),
+                MsgChannelXml::to_xml(&v),
             ),
-            ControlMessage::GraphicsRequest => (ControlMsgChannel::GraphicsRequest, "".into()),
-            ControlMessage::Heartbeat(v) => (ControlMsgChannel::Heartbeat, {
-                let mut s = String::new();
-                if let Some(v) = v.wss {
-                    s += &format!("<wss>{}</wss>\n", v);
-                }
-                if let Some(v) = v.max_wss {
-                    s += &format!("<max_wss>{}</max_wss>\n", v);
-                }
-                s.into()
-            }),
-            ControlMessage::TrickleDown(v) => (ControlMsgChannel::TrickleDown, {
-                let mut s = String::new();
-                if v.have_trickle_down {
-                    s += "<have_new_trickle_down/>\n";
-                }
-                if v.upload_file_status {
-                    s += "<upload_file_status/>\n";
-                }
-                s.into()
-            }),
+            ControlMessage::GraphicsRequest => (ControlMsgChannel::GraphicsRequest, vec![]),
+            ControlMessage::Heartbeat(v) => {
+                (ControlMsgChannel::Heartbeat, MsgChannelXml::to_xml(&v))
+            }
+            ControlMessage::TrickleDown(v) => {
+                (ControlMsgChannel::TrickleDown, MsgChannelXml::to_xml(&v))
+            }
         }
     }
 }
@@ -199,70 +341,26 @@ pub enum StatusMessage {
     #[serde(rename = "process_control_reply")]
     ProcessControlReply,
     #[serde(rename = "graphics_reply")]
-    GraphicsReply(GraphicsReply),
+    GraphicsReply(GraphicsReplyData),
     #[serde(rename = "app_status")]
-    AppStatus(AppStatus),
+    AppStatus(AppStatusData),
     #[serde(rename = "trickle_up")]
-    TrickleUp(TrickleUp),
+    TrickleUp(TrickleUpData),
 }
 
 impl StatusMessage {
-    pub fn from_raw(c: StatusMsgChannel, v: Vec<u8>) -> Result<Self, errors::Error> {
-        let doc = treexml::Document::parse(
-            format!("<IPC>{}</IPC>", &String::from_utf8_lossy(&v)).as_bytes(),
-        )?;
-        let root = doc.root.unwrap();
+    pub fn from_raw(c: StatusMsgChannel, b: Vec<u8>) -> Result<Self, Error> {
         match c {
             StatusMsgChannel::ProcessControlReply => Ok(StatusMessage::ProcessControlReply),
-            StatusMsgChannel::GraphicsReply => Ok(StatusMessage::GraphicsReply(GraphicsReply {
-                web_graphics_url: root.find_value("web_graphics_url")?,
-                remote_desktop_addr: root.find_value("remote_desktop_addr")?,
-            })),
-            StatusMsgChannel::AppStatus => Ok(StatusMessage::AppStatus(AppStatus {
-                current_cpu_time: match root.find_value("current_cpu_time")?.ok_or_else(|| {
-                    errors::Error::MissingDataInIPCMessage {
-                        channel: "app_status".into(),
-                        data: "current_cpu_time".into(),
-                    }.into()
-                }) {
-                    Ok(v) => v,
-                    Err(v) => {
-                        return Err(v);
-                    }
-                },
-                checkpoint_cpu_time: match root.find_value("checkpoint_cpu_time")?.ok_or_else(
-                    || {
-                        errors::Error::MissingDataInIPCMessage {
-                            channel: "app_status".into(),
-                            data: "checkpoint_cpu_time".into(),
-                        }.into()
-                    },
-                ) {
-                    Ok(v) => v,
-                    Err(v) => {
-                        return Err(v);
-                    }
-                },
-                want_network: root.find_child(|n| n.name == "want_network").is_some(),
-                fraction_done: match root.find_value("fraction_done")?.ok_or_else(|| {
-                    errors::Error::MissingDataInIPCMessage {
-                        channel: "app_status".into(),
-                        data: "fraction_done".into(),
-                    }.into()
-                }) {
-                    Ok(v) => v,
-                    Err(v) => {
-                        return Err(v);
-                    }
-                },
-                other_pid: treexml_util::find_value("other_pid", &root)?,
-                bytes_sent: treexml_util::find_value("bytes_sent", &root)?,
-                bytes_received: treexml_util::find_value("bytes_received", &root)?,
-            })),
-            StatusMsgChannel::TrickleUp => Ok(StatusMessage::TrickleUp(TrickleUp {
-                have_new_upload_file: root.find_child(|n| n.name == "have_new_upload_file")
-                    .is_some(),
-            })),
+            StatusMsgChannel::GraphicsReply => {
+                MsgChannelXml::from_xml(&b).map(StatusMessage::GraphicsReply)
+            }
+            StatusMsgChannel::AppStatus => {
+                MsgChannelXml::from_xml(&b).map(StatusMessage::AppStatus)
+            }
+            StatusMsgChannel::TrickleUp => {
+                MsgChannelXml::from_xml(&b).map(StatusMessage::TrickleUp)
+            }
         }
     }
 }
@@ -273,56 +371,9 @@ impl From<StatusMessage> for (StatusMsgChannel, Vec<u8>) {
             StatusMessage::ProcessControlReply => {
                 (StatusMsgChannel::ProcessControlReply, "".into())
             }
-            StatusMessage::GraphicsReply(ref v) => (StatusMsgChannel::GraphicsReply, {
-                let mut s = String::new();
-                if v.web_graphics_url.is_some() {
-                    s += &format!(
-                        "<web_graphics_url>{}</web_graphics_url>\n",
-                        v.web_graphics_url.as_ref().unwrap()
-                    );
-                }
-                if v.remote_desktop_addr.is_some() {
-                    s += &format!(
-                        "<remote_desktop_addr>{}</remote_desktop_addr>\n",
-                        v.remote_desktop_addr.as_ref().unwrap()
-                    );
-                }
-                s.into()
-            }),
-            StatusMessage::AppStatus(ref v) => (StatusMsgChannel::AppStatus, {
-                let mut s = String::new();
-                s += &format!(
-                    "<current_cpu_time>{}</current_cpu_time>\n",
-                    v.current_cpu_time
-                );
-                s += &format!(
-                    "<checkpoint_cpu_time>{}</checkpoint_cpu_time>\n",
-                    v.checkpoint_cpu_time
-                );
-                if v.want_network {
-                    s += "<want_network>1</want_network>\n";
-                }
-                s += &format!("<fraction_done>{}</fraction_done>\n", v.fraction_done);
-                if v.other_pid.is_some() {
-                    s += &format!("<other_pid>{}</other_pid>\n", v.other_pid.as_ref().unwrap());
-                }
-                if v.bytes_sent.is_some() {
-                    s += &format!(
-                        "<bytes_sent>{}</bytes_sent>\n",
-                        v.bytes_sent.as_ref().unwrap()
-                    );
-                }
-                if v.bytes_received.is_some() {
-                    s += &format!(
-                        "<bytes_received>{}</bytes_received>\n",
-                        v.bytes_received.as_ref().unwrap()
-                    );
-                }
-                s.into()
-            }),
-            StatusMessage::TrickleUp(_) => {
-                (StatusMsgChannel::TrickleUp, "<have_new_trickle_up/>".into())
-            }
+            StatusMessage::GraphicsReply(ref v) => (StatusMsgChannel::GraphicsReply, v.to_xml()),
+            StatusMessage::AppStatus(ref v) => (StatusMsgChannel::AppStatus, v.to_xml()),
+            StatusMessage::TrickleUp(ref v) => (StatusMsgChannel::TrickleUp, v.to_xml()),
         }
     }
 }
@@ -346,5 +397,34 @@ impl From<Message> for (MsgChannel, Vec<u8>) {
                 (id.into(), payload)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_graphics_reply_parse() {
+        let expectation = GraphicsReplyData {
+            web_graphics_url: Some("my_url_a".into()),
+            remote_desktop_addr: Some("my_vnc_url".into()),
+        };
+
+        let fixture = "<web_graphics_url>my_url_a</web_graphics_url><remote_desktop_addr>my_vnc_url</remote_desktop_addr>".as_bytes();
+
+        assert_eq!(expectation, GraphicsReplyData::from_xml(fixture).unwrap());
+    }
+
+    #[test]
+    fn test_trickle_up_parse() {
+        let expectation = TrickleUpData {
+            have_new_trickle_up: false,
+            have_new_upload_file: true,
+        };
+
+        let fixture = "<have_new_upload_file>1</have_new_upload_file>".as_bytes();
+
+        assert_eq!(expectation, TrickleUpData::from_xml(fixture).unwrap());
     }
 }
