@@ -59,8 +59,9 @@ mod tests {
             <fraction_done>0.1</fraction_done>
             <other_pid>345</other_pid>
         "
-                .into(),
-        ).unwrap();
+            .into(),
+        )
+        .unwrap();
 
         assert_eq!(expectation, result);
     }

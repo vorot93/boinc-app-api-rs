@@ -52,7 +52,8 @@ impl MSG_CHANNEL {
     {
         let v = msg.into();
         self.buf[0] = 1;
-        for (i, e) in v.iter()
+        for (i, e) in v
+            .iter()
             .enumerate()
             .take(min(v.len(), MSG_CHANNEL_SIZE - 2))
         {
@@ -248,26 +249,22 @@ pub trait AppChannel {
 }
 
 #[derive(Default)]
-pub struct MemoryAppChannel {
-    data: Mutex<SHARED_MEM>,
-}
+pub struct MemoryAppChannel(Mutex<SHARED_MEM>);
 
 impl AppChannel for MemoryAppChannel {
     fn transaction(&self, f: Box<Fn(&mut SHARED_MEM)>) {
-        f(&mut *self.data.lock().unwrap());
+        f(&mut *self.0.lock().unwrap());
     }
 }
 
 /// Wrapper to operate on shared mapped memory.
-pub struct MmapAppChannel {
-    data: Mutex<*mut SHARED_MEM>,
-}
+pub struct MmapAppChannel(Mutex<*mut SHARED_MEM>);
 
 impl Drop for MmapAppChannel {
     fn drop(&mut self) {
         unsafe {
             libc::munmap(
-                *self.data.lock().unwrap() as *mut libc::c_void,
+                *self.0.lock().unwrap() as *mut libc::c_void,
                 std::mem::size_of::<SHARED_MEM>(),
             );
         }
@@ -276,7 +273,7 @@ impl Drop for MmapAppChannel {
 
 impl AppChannel for MmapAppChannel {
     fn transaction(&self, f: Box<Fn(&mut SHARED_MEM)>) {
-        let mut p = self.data.lock().unwrap();
+        let mut p = self.0.lock().unwrap();
         f(unsafe { &mut **p })
     }
 }
@@ -312,9 +309,7 @@ impl MmapAppChannel {
             return Err(io::Error::last_os_error());
         }
 
-        Ok(Self {
-            data: Mutex::new(shmem as *mut SHARED_MEM),
-        })
+        Ok(MmapAppChannel(Mutex::new(shmem as *mut SHARED_MEM)))
     }
 }
 

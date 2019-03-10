@@ -3,8 +3,8 @@ use models::*;
 use shmem::*;
 
 use futures::prelude::*;
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 

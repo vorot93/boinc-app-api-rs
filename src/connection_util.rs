@@ -3,7 +3,7 @@ use shmem::*;
 
 use futures::prelude::*;
 use std;
-use std::{io, collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, io};
 
 pub fn flush_connection<T>(
     outgoing_slots: &mut HashMap<T, Vec<u8>>,

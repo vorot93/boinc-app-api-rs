@@ -87,7 +87,8 @@ impl MsgChannelXml for ProcessControlRequest {
 
         let mut root = parse_xml_data(s)?;
 
-        let variant = root.children
+        let variant = root
+            .children
             .pop()
             .ok_or_else(|| Error::DataParseError(format_err!("No variant detected")))?
             .name;
@@ -114,7 +115,8 @@ impl MsgChannelXml for ProcessControlRequest {
             Suspend => "<suspend/>",
             Resume => "<resume/>",
             Abort => "<abort/>",
-        }.into()
+        }
+        .into()
     }
 }
 
