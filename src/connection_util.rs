@@ -1,6 +1,5 @@
 use crate::{models::*, shmem::*};
-use futures::prelude::*;
-use std::{self, collections::HashMap, hash::Hash, io, task::Poll};
+use std::{self, collections::HashMap, hash::Hash, task::Poll};
 
 pub fn flush_connection<T>(
     outgoing_slots: &mut HashMap<T, Vec<u8>>,

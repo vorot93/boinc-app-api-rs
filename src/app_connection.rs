@@ -1,10 +1,9 @@
 use crate::{connection_util::*, models::*, shmem::*};
 use futures::*;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::HashMap,
     io,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -18,7 +17,7 @@ pub struct ClientHandle {
 impl Stream for ClientHandle {
     type Item = StatusMessage;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.app_channel.pull_status() {
             Some(v) => Poll::Ready(Some(v)),
             None => Poll::Pending,
@@ -29,7 +28,7 @@ impl Stream for ClientHandle {
 impl Sink<ControlMessage> for ClientHandle {
     type Error = io::Error;
 
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.outgoing_slots.is_empty() {
             Poll::Ready(Ok(()))
         } else {
@@ -38,12 +37,12 @@ impl Sink<ControlMessage> for ClientHandle {
     }
 
     fn start_send(self: Pin<&mut Self>, item: ControlMessage) -> Result<(), Self::Error> {
-        let (c, data) = item.clone().into();
+        let (c, data) = item.into();
         assert_eq!(self.get_mut().outgoing_slots.insert(c, data), None);
         Ok(())
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.send_closed {
             panic!("Sink has been closed.");
         }
@@ -51,7 +50,7 @@ impl Sink<ControlMessage> for ClientHandle {
         self.get_mut().flush_data().map(Ok)
     }
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let this = self.get_mut();
         this.send_closed = true;
 
@@ -63,7 +62,7 @@ impl ClientHandle {
     pub fn new(app_channel: SharedAppChannel) -> Self {
         Self {
             send_closed: false,
-            app_channel: Arc::clone(&app_channel),
+            app_channel,
             outgoing_slots: Default::default(),
         }
     }

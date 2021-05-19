@@ -35,7 +35,7 @@ impl ControlMsgChannel {
             Self::Heartbeat,
             Self::TrickleDown,
         ]
-        .into_iter()
+        .iter()
         .copied()
     }
 }
@@ -60,7 +60,7 @@ impl StatusMsgChannel {
             Self::AppStatus,
             Self::TrickleUp,
         ]
-        .into_iter()
+        .iter()
         .copied()
     }
 }

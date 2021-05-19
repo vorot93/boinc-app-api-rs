@@ -22,3 +22,6 @@ tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 treexml = { git = "https://github.com/rahulg/treexml-rs" }
 treexml_util = { git = "https://github.com/vorot93/treexml-util" }
+
+[dev-dependencies]
+tempfile = "3"

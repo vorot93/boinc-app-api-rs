@@ -1,5 +1,4 @@
 use crate::models::*;
-use futures::prelude::*;
 use libc::{self, c_char};
 use std::{
     self,
@@ -126,7 +125,7 @@ impl SHARED_MEM {
 }
 
 /// Represents a channel that can be used to send control commands and status messages back and forth between client and application.
-pub trait AppChannel {
+pub trait AppChannel: Send + Sync + 'static {
     /// Internal accessor for shared memory.
     fn transaction(&self, f: &dyn Fn(&mut SHARED_MEM));
 
@@ -193,7 +192,8 @@ pub trait AppChannel {
     fn clear(&self, c: MsgChannel) {
         let (tx, rx) = channel();
         self.transaction(&move |data| {
-            tx.send(data.get_channel_mut(c).clear()).unwrap();
+            data.get_channel_mut(c).clear();
+            tx.send(()).unwrap();
         });
         rx.recv().unwrap()
     }
@@ -208,7 +208,10 @@ pub trait AppChannel {
         rx.recv().unwrap().map(|_| m)
     }
 
-    /// Send the data to the channel. This version does not check message validity and is thus marked unsafe.
+    /// Send the data to the channel.
+    ///
+    /// # Safety
+    /// This version does not check message validity and is thus marked unsafe.
     unsafe fn push_unchecked(&self, m: (MsgChannel, Vec<u8>)) -> Option<(MsgChannel, Vec<u8>)> {
         let (tx, rx) = channel();
         let c = m.0;
@@ -222,24 +225,21 @@ pub trait AppChannel {
     /// Overwrite channel contents.
     fn force(&self, m: Message) {
         let (c, v) = m.into();
-        let (tx, rx) = channel();
         self.transaction(&move |data| {
-            tx.send(data.get_channel_mut(c).force_push(v.as_slice()))
-                .unwrap();
+            data.get_channel_mut(c).force_push(v.as_slice());
         });
-        rx.recv().unwrap()
     }
 
-    /// Overwrite channel contents. This version does not check message validity and is thus marked unsafe.
+    /// Overwrite channel contents.
+    ///
+    /// # Safety
+    /// This version does not check message validity and is thus marked unsafe.
     unsafe fn force_unchecked(&self, m: (MsgChannel, Vec<u8>)) {
-        let (tx, rx) = channel();
         let c = m.0;
         let v = m.1;
         self.transaction(&move |data| {
-            tx.send(data.get_channel_mut(c).force_push(v.clone()))
-                .unwrap();
+            data.get_channel_mut(c).force_push(v.clone());
         });
-        rx.recv().unwrap()
     }
 }
 
@@ -308,4 +308,7 @@ impl MmapAppChannel {
     }
 }
 
-pub type SharedAppChannel = Arc<AppChannel + Send + Sync + 'static>;
+unsafe impl Send for MmapAppChannel {}
+unsafe impl Sync for MmapAppChannel {}
+
+pub type SharedAppChannel = Arc<dyn AppChannel + Send + Sync + 'static>;
