@@ -5,15 +5,14 @@
 
 #![allow(clippy::mutex_atomic)]
 
-pub mod app_connection;
-pub mod client_connection;
+pub mod connection;
 pub mod connection_util;
 pub mod models;
 pub mod shmem;
 
 #[cfg(test)]
 mod tests {
-    use crate::{app_connection::*, client_connection::*, models::*, shmem::*};
+    use crate::{connection::*, models::*, shmem::*};
     use futures::prelude::*;
     use std::{sync::Arc, time::Duration};
 

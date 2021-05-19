@@ -2,30 +2,65 @@ use crate::{connection_util::*, models::*, shmem::*};
 use futures::*;
 use std::{
     collections::HashMap,
+    hash::Hash,
     io,
     pin::Pin,
     task::{Context, Poll},
 };
 
-// Represents a connection with the running application.
-pub struct ClientHandle {
-    app_channel: SharedAppChannel,
-    send_closed: bool,
-    outgoing_slots: HashMap<ControlMsgChannel, Vec<u8>>,
+pub trait ConnectionKind {
+    type OutChannel: Copy + Into<MsgChannel> + Eq + Hash + Unpin;
+    type Out: Into<(Self::OutChannel, Vec<u8>)>;
+    type In;
+
+    fn pull(app_channel: &SharedAppChannel) -> Option<Self::In>;
 }
 
-impl Stream for ClientHandle {
-    type Item = StatusMessage;
+pub struct Status;
+pub struct Control;
+
+impl ConnectionKind for Status {
+    type OutChannel = ControlMsgChannel;
+    type Out = ControlMessage;
+    type In = StatusMessage;
+
+    fn pull(app_channel: &SharedAppChannel) -> Option<Self::In> {
+        app_channel.pull_status()
+    }
+}
+
+impl ConnectionKind for Control {
+    type OutChannel = StatusMsgChannel;
+    type Out = StatusMessage;
+    type In = ControlMessage;
+
+    fn pull(app_channel: &SharedAppChannel) -> Option<Self::In> {
+        app_channel.pull_control()
+    }
+}
+
+pub type ClientHandle = Client<Status>;
+pub type AppHandle = Client<Control>;
+
+// Represents a connection with the running application.
+pub struct Client<K: ConnectionKind> {
+    app_channel: SharedAppChannel,
+    send_closed: bool,
+    outgoing_slots: HashMap<K::OutChannel, Vec<u8>>,
+}
+
+impl<K: ConnectionKind> Stream for Client<K> {
+    type Item = K::In;
 
     fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.app_channel.pull_status() {
+        match K::pull(&self.app_channel) {
             Some(v) => Poll::Ready(Some(v)),
             None => Poll::Pending,
         }
     }
 }
 
-impl Sink<ControlMessage> for ClientHandle {
+impl<K: ConnectionKind> Sink<K::Out> for Client<K> {
     type Error = io::Error;
 
     fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -36,7 +71,7 @@ impl Sink<ControlMessage> for ClientHandle {
         }
     }
 
-    fn start_send(self: Pin<&mut Self>, item: ControlMessage) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: K::Out) -> Result<(), Self::Error> {
         let (c, data) = item.into();
         assert_eq!(self.get_mut().outgoing_slots.insert(c, data), None);
         Ok(())
@@ -58,7 +93,7 @@ impl Sink<ControlMessage> for ClientHandle {
     }
 }
 
-impl ClientHandle {
+impl<K: ConnectionKind> Client<K> {
     pub fn new(app_channel: SharedAppChannel) -> Self {
         Self {
             send_closed: false,
