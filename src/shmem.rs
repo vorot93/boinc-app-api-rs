@@ -128,39 +128,39 @@ impl SHARED_MEM {
 /// Represents a channel that can be used to send control commands and status messages back and forth between client and application.
 pub trait AppChannel {
     /// Internal accessor for shared memory.
-    fn transaction(&self, f: Box<Fn(&mut SHARED_MEM)>);
+    fn transaction(&self, f: &dyn Fn(&mut SHARED_MEM));
 
     /// Check if `MsgChannel` contains a message.
     fn is_empty(&self, c: MsgChannel) -> bool {
         let (tx, rx) = channel();
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             tx.send(data.get_channel(c).is_empty()).unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 
     /// Check `MsgChannel` contents without extracting.
     fn peek(&self, c: MsgChannel) -> Option<Vec<u8>> {
         let (tx, rx) = channel();
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             tx.send(data.get_channel(c).peek()).unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 
     /// Extract data from the specified `MsgChannel`.
     fn receive(&self, c: MsgChannel) -> Option<Vec<u8>> {
         let (tx, rx) = channel();
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             tx.send(data.get_channel_mut(c).pop()).unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 
     /// Receive a new status message from any of the channels, if available
     fn pull_control(&self) -> Option<ControlMessage> {
         let (tx, rx) = channel();
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             for id in ControlMsgChannel::enum_iter() {
                 if let Some(v) = data.get_channel_mut(id.into()).pop() {
                     tx.send(Some(ControlMessage::from_raw(id, v).unwrap()))
@@ -169,14 +169,14 @@ pub trait AppChannel {
                 }
             }
             tx.send(None).unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 
     /// Receive a new status message from any of the channels, if available
     fn pull_status(&self) -> Option<StatusMessage> {
         let (tx, rx) = channel();
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             for id in StatusMsgChannel::enum_iter() {
                 if let Some(v) = data.get_channel_mut(id.into()).pop() {
                     tx.send(Some(StatusMessage::from_raw(id, v).unwrap()))
@@ -185,16 +185,16 @@ pub trait AppChannel {
                 }
             }
             tx.send(None).unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 
     /// Clear channel contents.
     fn clear(&self, c: MsgChannel) {
         let (tx, rx) = channel();
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             tx.send(data.get_channel_mut(c).clear()).unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 
@@ -202,11 +202,9 @@ pub trait AppChannel {
     fn push(&self, m: Message) -> Option<Message> {
         let (c, v) = m.clone().into();
         let (tx, rx) = channel();
-        self.transaction(Box::new({
-            move |data| {
-                tx.send(data.get_channel_mut(c).push(v.clone())).unwrap();
-            }
-        }));
+        self.transaction(&move |data| {
+            tx.send(data.get_channel_mut(c).push(v.clone())).unwrap();
+        });
         rx.recv().unwrap().map(|_| m)
     }
 
@@ -215,9 +213,9 @@ pub trait AppChannel {
         let (tx, rx) = channel();
         let c = m.0;
         let v = m.1;
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             tx.send(data.get_channel_mut(c).push(v.clone())).unwrap();
-        }));
+        });
         rx.recv().unwrap().map(|v| (c, v))
     }
 
@@ -225,10 +223,10 @@ pub trait AppChannel {
     fn force(&self, m: Message) {
         let (c, v) = m.into();
         let (tx, rx) = channel();
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             tx.send(data.get_channel_mut(c).force_push(v.as_slice()))
                 .unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 
@@ -237,10 +235,10 @@ pub trait AppChannel {
         let (tx, rx) = channel();
         let c = m.0;
         let v = m.1;
-        self.transaction(Box::new(move |data| {
+        self.transaction(&move |data| {
             tx.send(data.get_channel_mut(c).force_push(v.clone()))
                 .unwrap();
-        }));
+        });
         rx.recv().unwrap()
     }
 }
@@ -249,7 +247,7 @@ pub trait AppChannel {
 pub struct MemoryAppChannel(Mutex<SHARED_MEM>);
 
 impl AppChannel for MemoryAppChannel {
-    fn transaction(&self, f: Box<Fn(&mut SHARED_MEM)>) {
+    fn transaction(&self, f: &dyn Fn(&mut SHARED_MEM)) {
         f(&mut *self.0.lock().unwrap());
     }
 }
@@ -269,7 +267,7 @@ impl Drop for MmapAppChannel {
 }
 
 impl AppChannel for MmapAppChannel {
-    fn transaction(&self, f: Box<Fn(&mut SHARED_MEM)>) {
+    fn transaction(&self, f: &dyn Fn(&mut SHARED_MEM)) {
         let mut p = self.0.lock().unwrap();
         f(unsafe { &mut **p })
     }
