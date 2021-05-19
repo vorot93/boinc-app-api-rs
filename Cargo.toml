@@ -1,32 +1,24 @@
 [package]
 name = "boinc_app_api"
 version = "0.5.0"
-authors = [
-    "Artem Vorotnikov <artem@vorotnikov.me>",
-]
+authors = ["Artem Vorotnikov <artem@vorotnikov.me>"]
 description = "BOINC application API"
 repository = "https://github.com/volunode/boinc-app-api-rs"
-keywords = [
-    "boinc",
-    "api",
-]
-categories = [
-    "api-bindings",
-]
+keywords = ["boinc", "api"]
+categories = ["api-bindings"]
 license = "Apache-2.0"
+edition = "2018"
 
 [dependencies]
-enum-iter = { git = "https://github.com/vorot93/enum-iter" }
-failure = "*"
-futures = "0.1"
-futures-timer = "*"
-libc = "*"
-maplit = "*"
-macro-attr = "*"
-enum_derive = "*"
-serde = "*"
-serde_derive = "*"
-serde_json = "*"
-tokio-core = "*"
-treexml = "0.7"
+anyhow = "1"
+enum_derive = "0.1"
+futures = "0.3"
+libc = "0.2"
+maplit = "1"
+parking_lot = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+treexml = { git = "https://github.com/rahulg/treexml-rs" }
 treexml_util = { git = "https://github.com/vorot93/treexml-util" }

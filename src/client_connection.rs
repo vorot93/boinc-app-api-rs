@@ -1,12 +1,12 @@
-use connection_util::*;
-use models::*;
-use shmem::*;
-
+use crate::{connection_util::*, models::*, shmem::*};
 use futures::prelude::*;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::io;
-use std::sync::Arc;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    io,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 // Represents a connection with the control daemon.
 pub struct AppHandle {
@@ -17,43 +17,45 @@ pub struct AppHandle {
 
 impl Stream for AppHandle {
     type Item = ControlMessage;
-    type Error = io::Error;
 
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.app_channel.pull_control() {
-            Some(v) => Ok(Async::Ready(Some(v))),
-            None => Ok(Async::NotReady),
+            Some(v) => Poll::Ready(Some(v)),
+            None => Poll::Pending,
         }
     }
 }
 
-impl Sink for AppHandle {
-    type SinkItem = StatusMessage;
-    type SinkError = io::Error;
+impl Sink<StatusMessage> for AppHandle {
+    type Error = io::Error;
 
-    fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
-        let (c, data) = item.clone().into();
-        match self.outgoing_slots.entry(c) {
-            Entry::Occupied(_) => Ok(AsyncSink::NotReady(item)),
-            Entry::Vacant(e) => {
-                e.insert(data);
-                Ok(AsyncSink::Ready)
-            }
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if self.outgoing_slots.is_empty() {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
         }
     }
 
-    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
+    fn start_send(self: Pin<&mut Self>, item: StatusMessage) -> Result<(), Self::Error> {
+        let (c, data) = item.clone().into();
+        assert_eq!(self.get_mut().outgoing_slots.insert(c, data), None);
+        Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.send_closed {
             panic!("Sink has been closed.");
         }
 
-        self.flush_data()
+        self.get_mut().flush_data().map(Ok)
     }
 
-    fn close(&mut self) -> Poll<(), Self::SinkError> {
-        self.send_closed = true;
-        try_ready!(self.flush_data());
-        Ok(Async::Ready(()))
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let this = self.get_mut();
+        this.send_closed = true;
+
+        this.flush_data().map(Ok)
     }
 }
 
@@ -66,7 +68,7 @@ impl AppHandle {
         }
     }
 
-    fn flush_data(&mut self) -> Poll<(), io::Error> {
+    fn flush_data(&mut self) -> Poll<()> {
         flush_connection(&mut self.outgoing_slots, &self.app_channel)
     }
 }

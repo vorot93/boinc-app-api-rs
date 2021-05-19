@@ -1,18 +1,15 @@
-use models::*;
-
+use crate::models::*;
 use futures::prelude::*;
-use libc;
-use libc::c_char;
-use std;
-use std::cmp::min;
-use std::ffi::CStr;
-use std::io;
-use std::io::Write;
-use std::os::linux::fs::MetadataExt;
-use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::AsRawFd;
-use std::sync::mpsc::channel;
-use std::sync::{Arc, Mutex};
+use libc::{self, c_char};
+use std::{
+    self,
+    cmp::min,
+    ffi::CStr,
+    io,
+    io::Write,
+    os::unix::{fs::OpenOptionsExt, io::AsRawFd},
+    sync::{mpsc::channel, Arc, Mutex},
+};
 
 const MSG_CHANNEL_SIZE: usize = 1024;
 
@@ -66,15 +63,15 @@ impl MSG_CHANNEL {
         self.buf[MSG_CHANNEL_SIZE - 1] = 0;
     }
 
-    pub fn push<T>(&mut self, msg: T) -> AsyncSink<T>
+    pub fn push<T>(&mut self, msg: T) -> Option<T>
     where
         T: Into<Vec<u8>>,
     {
-        if !self.is_empty() {
-            AsyncSink::NotReady(msg)
-        } else {
+        if self.is_empty() {
             self.force_push(msg);
-            AsyncSink::Ready
+            None
+        } else {
+            Some(msg)
         }
     }
 }
@@ -202,7 +199,7 @@ pub trait AppChannel {
     }
 
     /// Send the data to the channel.
-    fn push(&self, m: Message) -> AsyncSink<Message> {
+    fn push(&self, m: Message) -> Option<Message> {
         let (c, v) = m.clone().into();
         let (tx, rx) = channel();
         self.transaction(Box::new({
@@ -214,7 +211,7 @@ pub trait AppChannel {
     }
 
     /// Send the data to the channel. This version does not check message validity and is thus marked unsafe.
-    unsafe fn push_unchecked(&self, m: (MsgChannel, Vec<u8>)) -> AsyncSink<(MsgChannel, Vec<u8>)> {
+    unsafe fn push_unchecked(&self, m: (MsgChannel, Vec<u8>)) -> Option<(MsgChannel, Vec<u8>)> {
         let (tx, rx) = channel();
         let c = m.0;
         let v = m.1;
@@ -287,17 +284,17 @@ impl MmapAppChannel {
             .mode(0o666)
             .open(path)?;
 
-        let sz = std::mem::size_of::<SHARED_MEM>();
+        const SZ: usize = std::mem::size_of::<SHARED_MEM>();
         let md = f.metadata()?;
 
-        if md.st_size() < sz as u64 {
-            f.write_all(&vec![0; sz])?;
+        if md.len() < SZ as u64 {
+            f.write_all(&[0; SZ])?;
         }
 
         let shmem = unsafe {
             libc::mmap(
                 std::ptr::null_mut(),
-                sz,
+                SZ,
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_FILE | libc::MAP_SHARED,
                 f.as_raw_fd(),

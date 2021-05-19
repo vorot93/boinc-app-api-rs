@@ -1,9 +1,9 @@
-use errors::Error;
-
+use anyhow::format_err;
+use serde::{Deserialize, Serialize};
 use treexml::Element;
 use treexml_util::{parse_node, ElementExt};
 
-fn parse_xml_data(s: &[u8]) -> Result<Element, Error> {
+fn parse_xml_data(s: &[u8]) -> anyhow::Result<Element> {
     Ok(parse_node(&format!("<root>{}</root>", &String::from_utf8_lossy(s)))?.unwrap())
 }
 
@@ -11,11 +11,11 @@ pub(crate) trait MsgChannelXml
 where
     Self: Sized,
 {
-    fn from_xml(s: &[u8]) -> Result<Self, Error>;
+    fn from_xml(s: &[u8]) -> anyhow::Result<Self>;
     fn to_xml(&self) -> Vec<u8>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIterator)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ControlMsgChannel {
     #[serde(rename = "process_control_request")]
     ProcessControlRequest,
@@ -27,7 +27,20 @@ pub enum ControlMsgChannel {
     TrickleDown,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIterator)]
+impl ControlMsgChannel {
+    pub fn enum_iter() -> impl Iterator<Item = Self> {
+        [
+            Self::ProcessControlRequest,
+            Self::GraphicsRequest,
+            Self::Heartbeat,
+            Self::TrickleDown,
+        ]
+        .into_iter()
+        .copied()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StatusMsgChannel {
     #[serde(rename = "process_control_reply")]
     ProcessControlReply,
@@ -37,6 +50,19 @@ pub enum StatusMsgChannel {
     AppStatus,
     #[serde(rename = "trickle_up")]
     TrickleUp,
+}
+
+impl StatusMsgChannel {
+    pub fn enum_iter() -> impl Iterator<Item = Self> {
+        [
+            Self::ProcessControlReply,
+            Self::GraphicsReply,
+            Self::AppStatus,
+            Self::TrickleUp,
+        ]
+        .into_iter()
+        .copied()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -82,7 +108,7 @@ pub enum ProcessControlRequest {
 }
 
 impl MsgChannelXml for ProcessControlRequest {
-    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+    fn from_xml(s: &[u8]) -> anyhow::Result<Self> {
         use self::ProcessControlRequest::*;
 
         let mut root = parse_xml_data(s)?;
@@ -90,7 +116,7 @@ impl MsgChannelXml for ProcessControlRequest {
         let variant = root
             .children
             .pop()
-            .ok_or_else(|| Error::DataParseError(format_err!("No variant detected")))?
+            .ok_or_else(|| format_err!("No variant detected"))?
             .name;
 
         Ok(match variant.as_ref() {
@@ -99,10 +125,7 @@ impl MsgChannelXml for ProcessControlRequest {
             "resume" => Resume,
             "abort" => Abort,
             _ => {
-                return Err(Error::DataParseError(format_err!(
-                    "Invalid variant detected: {}",
-                    &variant
-                )));
+                return Err(format_err!("Invalid variant detected: {}", &variant));
             }
         })
     }
@@ -127,7 +150,7 @@ pub struct GraphicsReplyData {
 }
 
 impl MsgChannelXml for GraphicsReplyData {
-    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+    fn from_xml(s: &[u8]) -> anyhow::Result<Self> {
         let root = parse_xml_data(s)?;
 
         Ok(Self {
@@ -155,7 +178,7 @@ pub struct Heartbeat {
 }
 
 impl MsgChannelXml for Heartbeat {
-    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+    fn from_xml(s: &[u8]) -> anyhow::Result<Self> {
         let root = parse_xml_data(s)?;
 
         Ok(Self {
@@ -188,7 +211,7 @@ pub struct AppStatusData {
 }
 
 impl MsgChannelXml for AppStatusData {
-    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+    fn from_xml(s: &[u8]) -> anyhow::Result<Self> {
         let root = parse_xml_data(s)?;
 
         Ok(Self {
@@ -236,7 +259,7 @@ pub struct TrickleDownData {
 }
 
 impl MsgChannelXml for TrickleDownData {
-    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+    fn from_xml(s: &[u8]) -> anyhow::Result<Self> {
         let root = parse_xml_data(s)?;
 
         Ok(Self {
@@ -264,7 +287,7 @@ pub struct TrickleUpData {
 }
 
 impl MsgChannelXml for TrickleUpData {
-    fn from_xml(s: &[u8]) -> Result<Self, Error> {
+    fn from_xml(s: &[u8]) -> anyhow::Result<Self> {
         let root = parse_xml_data(s)?;
 
         Ok(Self {
@@ -302,7 +325,16 @@ pub enum ControlMessage {
 }
 
 impl ControlMessage {
-    pub fn from_raw(c: ControlMsgChannel, b: Vec<u8>) -> Result<Self, Error> {
+    pub fn channel(&self) -> ControlMsgChannel {
+        match self {
+            ControlMessage::ProcessControlRequest(_) => ControlMsgChannel::ProcessControlRequest,
+            ControlMessage::GraphicsRequest => ControlMsgChannel::GraphicsRequest,
+            ControlMessage::Heartbeat(_) => ControlMsgChannel::Heartbeat,
+            ControlMessage::TrickleDown(_) => ControlMsgChannel::TrickleDown,
+        }
+    }
+
+    pub fn from_raw(c: ControlMsgChannel, b: Vec<u8>) -> anyhow::Result<Self> {
         match c {
             ControlMsgChannel::ProcessControlRequest => {
                 MsgChannelXml::from_xml(&b).map(ControlMessage::ProcessControlRequest)
@@ -351,7 +383,7 @@ pub enum StatusMessage {
 }
 
 impl StatusMessage {
-    pub fn from_raw(c: StatusMsgChannel, b: Vec<u8>) -> Result<Self, Error> {
+    pub fn from_raw(c: StatusMsgChannel, b: Vec<u8>) -> anyhow::Result<Self> {
         match c {
             StatusMsgChannel::ProcessControlReply => Ok(StatusMessage::ProcessControlReply),
             StatusMsgChannel::GraphicsReply => {
